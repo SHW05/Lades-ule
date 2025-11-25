@@ -1,0 +1,45 @@
+name: Ubitricity Watcher
+
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Repository auschecken
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+
+      - name: Python installieren
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      - name: Abhängigkeiten installieren
+        run: pip install requests
+
+      - name: Script ausführen
+        env:
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: python watch.py
+
+      - name: status_cache.json committen
+        run: |
+          if [ -f status_cache.json ]; then
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git add status_cache.json
+            git commit -m "Update status cache [skip ci]" || echo "Nichts zu committen"
+            git push || echo "Push nicht nötig"
+          else
+            echo "status_cache.json existiert nicht."
+          fi
