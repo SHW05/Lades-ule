@@ -3,6 +3,9 @@ import requests
 from datetime import datetime
 import os
 import json
+import sys
+
+# ------------------ Konfiguration ------------------
 
 URLS = [
     "https://charge.ubitricity.com/map/DE*UBI*E10076281",
@@ -103,6 +106,12 @@ def save_cache(cache: dict):
 
 
 def check_once():
+    """
+    Wird von der normalen GitHub-Action genutzt:
+    - vergleicht mit dem Cache
+    - sendet nur bei Änderungen Meldungen
+    - sendet eine Sammelmeldung, wenn es keine Änderungen gab
+    """
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     cache = load_cache()
     new_cache = dict(cache)
@@ -159,5 +168,48 @@ def check_once():
         send_telegram(msg)
 
 
+def snapshot_status():
+    """
+    Wird vom /status-Workflow genutzt:
+    - ignoriert Cache komplett
+    - schickt immer eine Übersicht aller Säulen in EINER Nachricht
+    """
+    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    lines = [
+        "<b>📊 Aktueller Status der Ladesäulen</b>",
+        "",
+        f"🕒 <b>Zeit:</b> {now}",
+        "",
+    ]
+
+    for url in URLS:
+        try:
+            resp = requests.get(url, timeout=20)
+            resp.raise_for_status()
+            html = resp.text
+        except:
+            lines.append(f"❌ Fehler beim Abruf: {url}")
+            lines.append("")
+            continue
+
+        addr, statuses = parse_address_and_statuses(html)
+
+        lines.append(f"📍 <b>{addr}</b>")
+        for evse_id, status in statuses.items():
+            pretty = STATUS_LABELS.get(status, status)
+            lines.append(f"• <code>{evse_id}</code>: {pretty}")
+        lines.append("")  # Leerzeile zwischen Standorten
+
+    msg = "\n".join(lines)
+    send_telegram(msg)
+
+
 if __name__ == "__main__":
-    check_once()
+    # Standard: "check" (für Cron-Job)
+    mode = sys.argv[1] if len(sys.argv) > 1 else "check"
+
+    if mode == "snapshot":
+        snapshot_status()
+    else:
+        check_once()
